@@ -1,30 +1,30 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px # A more interactive plotting library
+import plotly.express as px
+import calendar # Needed for sorting months
 
 # --- Page Configuration ---
-# 'wide' layout uses the full screen width, which is better for dashboards
 st.set_page_config(layout="wide", page_title="Netflix Analysis Dashboard")
 
 # --- Data Loading ---
-# @st.cache_data tells Streamlit to only load this data once,
-# which makes your app run much faster.
 @st.cache_data
 def load_data(filepath):
     try:
         data = pd.read_csv(filepath)
-        # Perform data cleaning as planned in your doc
+        # Data Cleaning
         data['country'] = data['country'].fillna('Unknown')
         data['director'] = data['director'].fillna('Unknown')
         data['cast'] = data['cast'].fillna('Unknown')
         data = data.dropna(subset=['rating', 'date_added'])
+        
+        # Convert date_added to datetime objects for time-based plots
+        data['date_added'] = pd.to_datetime(data['date_added'], format='mixed')
         return data
     except FileNotFoundError:
         st.error(f"Error: The file '{filepath}' was not found. Please make sure it's in the root of your GitHub repository.")
-        return pd.DataFrame() # Return empty dataframe
+        return pd.DataFrame()
 
 # Load the dataset
-# This MUST match the name of the file you uploaded to GitHub
 df = load_data('netflix_titles.csv')
 
 # --- Main Dashboard Title ---
@@ -34,34 +34,33 @@ st.markdown("This dashboard provides an interactive analysis of Netflix content,
 # --- Sidebar Filters ---
 st.sidebar.header("Dashboard Filters 🔎")
 
-# Filter 1: Type (Movie or TV Show) - as planned
+# Filter 1: Type
 type_options = df['type'].unique()
 type_filter = st.sidebar.multiselect(
     "Select Content Type (Movie/TV Show):",
     options=type_options,
-    default=type_options # Default to showing all
+    default=type_options
 )
 
-# Filter 2: Rating - as planned
+# Filter 2: Rating
 rating_options = sorted(df['rating'].unique())
 rating_filter = st.sidebar.multiselect(
     "Select Content Rating:",
     options=rating_options,
-    default=rating_options # Default to showing all
+    default=rating_options
 )
 
-# Filter 3: Release Year - as planned
+# Filter 3: Release Year
 min_year = int(df['release_year'].min())
 max_year = int(df['release_year'].max())
 year_slider = st.sidebar.slider(
     "Select Release Year Range:",
     min_value=min_year,
     max_value=max_year,
-    value=(min_year, max_year) # Default to full range
+    value=(min_year, max_year)
 )
 
 # --- Apply Filters to Data ---
-# This filtered_df will be used by all charts and tables
 filtered_df = df[
     (df['type'].isin(type_filter)) &
     (df['rating'].isin(rating_filter)) &
@@ -75,7 +74,7 @@ if filtered_df.empty:
 else:
     # --- Main Page Content ---
     
-    # Row 1: Key Metrics
+    # Row 1: Key Metrics (Kept from before)
     st.subheader("High-Level Summary")
     total_titles = filtered_df.shape[0]
     total_movies = filtered_df[filtered_df['type'] == 'Movie'].shape[0]
@@ -86,72 +85,118 @@ else:
     col2.metric("Total Movies", f"{total_movies:,}")
     col3.metric("Total TV Shows", f"{total_shows:,}")
 
-    # Row 2: Charts (as planned in your doc)
-    st.subheader("Interactive Visualizations (Time & Genre)")
+    # --- NEW PLOTS START HERE ---
+
+    # Row 2: Duration Analysis (Plots 1 & 2)
+    st.subheader("Content Duration Analysis")
     col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
-        # Chart 1: Content added over time
-        st.markdown("**Chart 1: Content Added Per Year**")
-        year_data = filtered_df['release_year'].value_counts().reset_index()
-        year_data.columns = ['Release Year', 'Count']
-        year_data = year_data.sort_values(by='Release Year')
-        
-        fig1 = px.line(year_data, x='Release Year', y='Count', title="Titles Added by Year")
-        st.plotly_chart(fig1, use_container_width=True)
+        # Plot 1: Histogram of Movie Durations
+        st.markdown("**Plot 1: Histogram of Movie Durations**")
+        df_movies = filtered_df[filtered_df['type'] == 'Movie'].copy()
+        if not df_movies.empty:
+            # Clean duration column (e.g., "90 min" -> 90)
+            df_movies['duration_int'] = df_movies['duration'].str.replace(' min', '').astype(int)
+            fig1 = px.histogram(
+                df_movies, 
+                x='duration_int', 
+                nbins=40, 
+                title="Distribution of Movie Durations (in minutes)"
+            )
+            fig1.update_layout(xaxis_title="Duration (Minutes)", yaxis_title="Number of Movies")
+            st.plotly_chart(fig1, use_container_width=True)
+        else:
+            st.info("No movies selected to display duration.")
 
     with col_chart2:
-        # Chart 2: Genre Distribution
-        st.markdown("**Chart 2: Top 10 Genres**")
-        # Split 'listed_in' (genres) and count them
-        all_genres = filtered_df['listed_in'].str.split(', ').explode()
-        genre_counts = all_genres.value_counts().head(10).reset_index()
-        genre_counts.columns = ['Genre', 'Count']
-        
-        fig2 = px.bar(genre_counts, x='Count', y='Genre', orientation='h', title="Top 10 Genres")
-        fig2.update_layout(yaxis={'categoryorder':'total ascending'}) # Show largest at top
-        st.plotly_chart(fig2, use_container_width=True)
+        # Plot 2: Bar Chart of TV Show Season Counts
+        st.markdown("**Plot 2: TV Show Season Counts**")
+        df_shows = filtered_df[filtered_df['type'] == 'TV Show'].copy()
+        if not df_shows.empty:
+            season_counts = df_shows['duration'].value_counts().reset_index()
+            season_counts.columns = ['Seasons', 'Count']
+            fig2 = px.bar(
+                season_counts, 
+                x='Seasons', 
+                y='Count', 
+                title="Distribution of TV Show Seasons"
+            )
+            fig2.update_layout(xaxis={'categoryorder':'total descending'})
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("No TV shows selected to display season counts.")
 
-    # Row 3: More Visualizations (Type, Country, Director)
-    st.subheader("Content Breakdown (Type & Director)")
+    # Row 3: Actor Popularity & Content Seasonality (Plots 3 & 4)
+    st.subheader("Actor Popularity & Monthly Trends")
     col_chart3, col_chart4 = st.columns(2)
 
     with col_chart3:
-        # Chart 3: Pie chart for Type (Movie vs TV Show)
-        st.markdown("**Chart 3: Content Type Distribution**")
-        type_counts = filtered_df['type'].value_counts().reset_index()
-        type_counts.columns = ['Type', 'Count']
+        # Plot 3: Bar Chart of Top 10 Actors
+        st.markdown("**Plot 3: Top 10 Actors**")
+        # Split 'cast', explode, and count, excluding 'Unknown'
+        all_actors = filtered_df[filtered_df['cast'] != 'Unknown']['cast'].str.split(', ').explode()
+        actor_counts = all_actors.value_counts().head(10).reset_index()
+        actor_counts.columns = ['Actor', 'Count']
         
-        fig3 = px.pie(type_counts, names='Type', values='Count', title="Movie vs. TV Show Split", hole=0.3)
+        fig3 = px.bar(
+            actor_counts, 
+            x='Count', 
+            y='Actor', 
+            orientation='h', 
+            title="Top 10 Actors by Content Count"
+        )
+        fig3.update_layout(yaxis={'categoryorder':'total ascending'})
         st.plotly_chart(fig3, use_container_width=True)
 
     with col_chart4:
-        # Chart 4: Bar chart for Top 10 Directors
-        st.markdown("**Chart 4: Top 10 Directors**")
-        all_directors = filtered_df[filtered_df['director'] != 'Unknown']['director'].str.split(', ').explode()
-        director_counts = all_directors.value_counts().head(10).reset_index()
-        director_counts.columns = ['Director', 'Count']
+        # Plot 4: Bar Chart of Content Added by Month
+        st.markdown("**Plot 4: Content Added by Month**")
+        df_monthly = filtered_df.copy()
+        # Extract month name
+        df_monthly['month_added'] = df_monthly['date_added'].dt.month_name()
+        # Get counts
+        month_counts = df_monthly['month_added'].value_counts().reset_index()
+        month_counts.columns = ['Month', 'Count']
         
-        fig4 = px.bar(director_counts, x='Count', y='Director', orientation='h', title="Top 10 Directors by Content Count")
-        fig4.update_layout(yaxis={'categoryorder':'total ascending'})
+        # Sort by calendar month (Jan, Feb, Mar...)
+        month_order = list(calendar.month_name)[1:]
+        month_counts = month_counts.set_index('Month').reindex(month_order).reset_index()
+
+        fig4 = px.bar(
+            month_counts, 
+            x='Month', 
+            y='Count', 
+            title="Content Additions by Month"
+        )
         st.plotly_chart(fig4, use_container_width=True)
 
-    # --- NEW: Row 4: Rating Visualization ---
-    st.subheader("Content Analysis by Rating")
+    # Row 4: Treemap Breakdown (Plot 5)
+    st.subheader("Content Library Breakdown")
     
-    # Chart 5: Bar chart for Top 10 Ratings
-    rating_counts = filtered_df['rating'].value_counts().head(10).reset_index()
-    rating_counts.columns = ['Rating', 'Count']
+    # Plot 5: Treemap of Genres and Ratings
+    st.markdown("**Plot 5: Treemap of Content by Genre and Rating**")
     
-    fig5 = px.bar(rating_counts, 
-                  x='Count', 
-                  y='Rating', 
-                  orientation='h', 
-                  title="Top 10 Content Ratings")
-    fig5.update_layout(yaxis={'categoryorder':'total ascending'})
-    st.plotly_chart(fig5, use_container_width=True)
+    # Use only the *first* listed genre for simplicity in the treemap
+    treemap_data = filtered_df.copy()
+    treemap_data['main_genre'] = treemap_data['listed_in'].str.split(', ').str[0]
+    
+    # Group by main_genre and rating
+    treemap_grouped = treemap_data.groupby(['main_genre', 'rating']).size().reset_index(name='count')
+
+    if not treemap_grouped.empty:
+        fig5 = px.treemap(
+            treemap_grouped, 
+            path=[px.Constant("All Content"), 'main_genre', 'rating'], 
+            values='count',
+            title='Interactive Breakdown by Genre and Rating'
+        )
+        fig5.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+        st.plotly_chart(fig5, use_container_width=True)
+    else:
+        st.info("No data for treemap.")
 
 
-    # Row 5: Raw Data Table (as planned)
+    # Row 5: Raw Data Table (Kept from before)
     st.subheader("Explore All Filtered Titles")
     st.dataframe(filtered_df)
