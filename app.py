@@ -1,12 +1,19 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import plotly.express as px # A more interactive plotting library
 
+# --- Page Configuration ---
+# 'wide' layout uses the full screen width, which is better for dashboards
 st.set_page_config(layout="wide", page_title="Netflix Analysis Dashboard")
+
+# --- Data Loading ---
+# @st.cache_data tells Streamlit to only load this data once,
+# which makes your app run much faster.
 @st.cache_data
 def load_data(filepath):
     try:
         data = pd.read_csv(filepath)
+        # Perform data cleaning as planned in your doc
         data['country'] = data['country'].fillna('Unknown')
         data['director'] = data['director'].fillna('Unknown')
         data['cast'] = data['cast'].fillna('Unknown')
@@ -14,38 +21,47 @@ def load_data(filepath):
         return data
     except FileNotFoundError:
         st.error(f"Error: The file '{filepath}' was not found. Please make sure it's in the root of your GitHub repository.")
-        return pd.DataFrame()
+        return pd.DataFrame() # Return empty dataframe
+
+# Load the dataset
+# This MUST match the name of the file you uploaded to GitHub
 df = load_data('netflix_titles.csv')
 
-st.title("A Data-Driven Analysis of Netflix")
+# --- Main Dashboard Title ---
+st.title("🎬 A Data-Driven Analysis of Netflix")
 st.markdown("This dashboard provides an interactive analysis of Netflix content, solving the 'decision fatigue' problem identified in the project background.")
 
+# --- Sidebar Filters ---
 st.sidebar.header("Dashboard Filters 🔎")
 
+# Filter 1: Type (Movie or TV Show) - as planned
 type_options = df['type'].unique()
 type_filter = st.sidebar.multiselect(
     "Select Content Type (Movie/TV Show):",
     options=type_options,
-    default=type_options 
+    default=type_options # Default to showing all
 )
 
+# Filter 2: Rating - as planned
 rating_options = sorted(df['rating'].unique())
 rating_filter = st.sidebar.multiselect(
     "Select Content Rating:",
     options=rating_options,
-    default=rating_options 
+    default=rating_options # Default to showing all
 )
 
+# Filter 3: Release Year - as planned
 min_year = int(df['release_year'].min())
 max_year = int(df['release_year'].max())
 year_slider = st.sidebar.slider(
     "Select Release Year Range:",
     min_value=min_year,
     max_value=max_year,
-    value=(min_year, max_year) 
+    value=(min_year, max_year) # Default to full range
 )
 
-
+# --- Apply Filters to Data ---
+# This filtered_df will be used by all charts and tables
 filtered_df = df[
     (df['type'].isin(type_filter)) &
     (df['rating'].isin(rating_filter)) &
@@ -53,10 +69,13 @@ filtered_df = df[
     (df['release_year'] <= year_slider[1])
 ]
 
+# Show an error if the filters result in no data
 if filtered_df.empty:
     st.warning("No data found for the selected filters. Please adjust your filter settings.")
 else:
+    # --- Main Page Content ---
     
+    # Row 1: Key Metrics
     st.subheader("High-Level Summary")
     total_titles = filtered_df.shape[0]
     total_movies = filtered_df[filtered_df['type'] == 'Movie'].shape[0]
@@ -67,10 +86,12 @@ else:
     col2.metric("Total Movies", f"{total_movies:,}")
     col3.metric("Total TV Shows", f"{total_shows:,}")
 
-    st.subheader("Interactive Visualizations")
+    # Row 2: Charts (as planned in your doc)
+    st.subheader("Interactive Visualizations (Time & Genre)")
     col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
+        # Chart 1: Content added over time
         st.markdown("**Chart 1: Content Added Per Year**")
         year_data = filtered_df['release_year'].value_counts().reset_index()
         year_data.columns = ['Release Year', 'Count']
@@ -80,14 +101,65 @@ else:
         st.plotly_chart(fig1, use_container_width=True)
 
     with col_chart2:
+        # Chart 2: Genre Distribution
         st.markdown("**Chart 2: Top 10 Genres**")
+        # Split 'listed_in' (genres) and count them
         all_genres = filtered_df['listed_in'].str.split(', ').explode()
         genre_counts = all_genres.value_counts().head(10).reset_index()
         genre_counts.columns = ['Genre', 'Count']
         
         fig2 = px.bar(genre_counts, x='Count', y='Genre', orientation='h', title="Top 10 Genres")
-        fig2.update_layout(yaxis={'categoryorder':'total ascending'})
+        fig2.update_layout(yaxis={'categoryorder':'total ascending'}) # Show largest at top
         st.plotly_chart(fig2, use_container_width=True)
 
+    # --- NEW: Row 3: More Visualizations (Type, Country, Director) ---
+    st.subheader("Content Breakdown (Type, Country, Director)")
+    col_chart3, col_chart4 = st.columns(2)
+
+    with col_chart3:
+        # Chart 3: Pie chart for Type (Movie vs TV Show)
+        st.markdown("**Chart 3: Content Type Distribution**")
+        type_counts = filtered_df['type'].value_counts().reset_index()
+        type_counts.columns = ['Type', 'Count']
+        
+        fig3 = px.pie(type_counts, names='Type', values='Count', title="Movie vs. TV Show Split", hole=0.3)
+        st.plotly_chart(fig3, use_container_width=True)
+
+    with col_chart4:
+        # Chart 4: Bar chart for Top 10 Directors
+        st.markdown("**Chart 4: Top 10 Directors**")
+        all_directors = filtered_df[filtered_df['director'] != 'Unknown']['director'].str.split(', ').explode()
+        director_counts = all_directors.value_counts().head(10).reset_index()
+        director_counts.columns = ['Director', 'Count']
+        
+        fig4 = px.bar(director_counts, x='Count', y='Director', orientation='h', title="Top 10 Directors by Content Count")
+        fig4.update_layout(yaxis={'categoryorder':'total ascending'})
+        st.plotly_chart(fig4, use_container_width=True)
+
+    # --- NEW: Row 4: Map Visualization ---
+    st.subheader("Global Content Production")
+
+    # Process data for the map
+    # We'll take the *first* country listed for simplicity
+    country_data = filtered_df[filtered_df['country'] != 'Unknown']['country'].str.split(', ').str[0]
+    country_counts = country_data.value_counts().reset_index()
+    country_counts.columns = ['Country', 'Count']
+
+    # Chart 5: Choropleth Map
+    fig5 = px.choropleth(
+        country_counts,
+        locations="Country",
+        locationmode="country names",
+        color="Count",
+        hover_name="Country",
+        hover_data={'Country': False, 'Count': True},
+        color_continuous_scale=px.colors.sequential.Reds,
+        title="Content Production by Country (based on first country listed)"
+    )
+    fig5.update_layout(margin=dict(l=0, r=0, t=40, b=0)) # Make map bigger
+    st.plotly_chart(fig5, use_container_width=True)
+
+
+    # Row 5: Raw Data Table (as planned)
     st.subheader("Explore All Filtered Titles")
     st.dataframe(filtered_df)
