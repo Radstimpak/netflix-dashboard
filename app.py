@@ -95,9 +95,18 @@ else:
         # Plot 1: Histogram of Movie Durations
         st.markdown("**Plot 1: Histogram of Movie Durations**")
         df_movies = filtered_df[filtered_df['type'] == 'Movie'].copy()
+        
+        # --- FIX START ---
+        # 1. Drop rows where duration is NaN
+        df_movies = df_movies.dropna(subset=['duration'])
+        # 2. Also ensure we only get rows with " min" to avoid bad data (like '1 Season')
+        df_movies = df_movies[df_movies['duration'].str.contains(' min', na=False)]
+        # --- FIX END ---
+        
         if not df_movies.empty:
-            # Clean duration column (e.g., "90 min" -> 90)
+            # 3. Now this conversion is safe
             df_movies['duration_int'] = df_movies['duration'].str.replace(' min', '').astype(int)
+            
             fig1 = px.histogram(
                 df_movies, 
                 x='duration_int', 
@@ -107,25 +116,43 @@ else:
             fig1.update_layout(xaxis_title="Duration (Minutes)", yaxis_title="Number of Movies")
             st.plotly_chart(fig1, use_container_width=True)
         else:
-            st.info("No movies selected to display duration.")
+            st.info("No movies with valid duration data selected.")
+
 
     with col_chart2:
         # Plot 2: Bar Chart of TV Show Season Counts
         st.markdown("**Plot 2: TV Show Season Counts**")
         df_shows = filtered_df[filtered_df['type'] == 'TV Show'].copy()
+        
+        # --- FIX START ---
+        # 1. Add a similar check for TV shows, ensuring duration is not NaN
+        df_shows = df_shows.dropna(subset=['duration'])
+        # 2. And ensure it contains "Season"
+        df_shows = df_shows[df_shows['duration'].str.contains('Season', na=False)]
+        # --- FIX END ---
+        
         if not df_shows.empty:
             season_counts = df_shows['duration'].value_counts().reset_index()
             season_counts.columns = ['Seasons', 'Count']
+            
+            # Sort by the number of seasons (e.g., "1 Season", "2 Seasons"...)
+            # This is a bit more complex but makes the chart logical
+            try:
+                season_counts['sort_key'] = season_counts['Seasons'].str.replace(' Seasons', '').str.replace(' Season', '').astype(int)
+                season_counts = season_counts.sort_values(by='sort_key')
+            except:
+                # Fallback if sorting fails
+                season_counts = season_counts.sort_values(by='Count', ascending=False)
+
             fig2 = px.bar(
                 season_counts, 
                 x='Seasons', 
                 y='Count', 
                 title="Distribution of TV Show Seasons"
             )
-            fig2.update_layout(xaxis={'categoryorder':'total descending'})
             st.plotly_chart(fig2, use_container_width=True)
         else:
-            st.info("No TV shows selected to display season counts.")
+            st.info("No TV shows with valid season data selected.")
 
     # Row 3: Actor Popularity & Content Seasonality (Plots 3 & 4)
     st.subheader("Actor Popularity & Monthly Trends")
@@ -136,18 +163,22 @@ else:
         st.markdown("**Plot 3: Top 10 Actors**")
         # Split 'cast', explode, and count, excluding 'Unknown'
         all_actors = filtered_df[filtered_df['cast'] != 'Unknown']['cast'].str.split(', ').explode()
-        actor_counts = all_actors.value_counts().head(10).reset_index()
-        actor_counts.columns = ['Actor', 'Count']
         
-        fig3 = px.bar(
-            actor_counts, 
-            x='Count', 
-            y='Actor', 
-            orientation='h', 
-            title="Top 10 Actors by Content Count"
-        )
-        fig3.update_layout(yaxis={'categoryorder':'total ascending'})
-        st.plotly_chart(fig3, use_container_width=True)
+        if not all_actors.empty:
+            actor_counts = all_actors.value_counts().head(10).reset_index()
+            actor_counts.columns = ['Actor', 'Count']
+            
+            fig3 = px.bar(
+                actor_counts, 
+                x='Count', 
+                y='Actor', 
+                orientation='h', 
+                title="Top 10 Actors by Content Count"
+            )
+            fig3.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig3, use_container_width=True)
+        else:
+            st.info("No actor data to display.")
 
     with col_chart4:
         # Plot 4: Bar Chart of Content Added by Month
@@ -179,10 +210,16 @@ else:
     
     # Use only the *first* listed genre for simplicity in the treemap
     treemap_data = filtered_df.copy()
+    
+    # --- FIX START ---
+    # 3. Add a check to drop NaNs from 'listed_in' before splitting
+    treemap_data = treemap_data.dropna(subset=['listed_in'])
+    # --- FIX END ---
+    
     treemap_data['main_genre'] = treemap_data['listed_in'].str.split(', ').str[0]
     
     # Group by main_genre and rating
-    treemap_grouped = treemap_data.groupby(['main_genre', 'rating']).size().reset_index(name='count')
+    treemap_grouped = treemap_data.groupby(['main_genr`e', 'rating']).size().reset_index(name='count')
 
     if not treemap_grouped.empty:
         fig5 = px.treemap(
