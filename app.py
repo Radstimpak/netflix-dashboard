@@ -112,8 +112,8 @@ else:
         fig2.update_layout(yaxis={'categoryorder':'total ascending'}) # Show largest at top
         st.plotly_chart(fig2, use_container_width=True)
 
-    # --- NEW: Row 3: More Visualizations (Type, Country, Director) ---
-    st.subheader("Content Breakdown (Type, Country, Director)")
+    # Row 3: More Visualizations (Type, Country, Director)
+    st.subheader("Content Breakdown (Type & Director)")
     col_chart3, col_chart4 = st.columns(2)
 
     with col_chart3:
@@ -136,27 +136,19 @@ else:
         fig4.update_layout(yaxis={'categoryorder':'total ascending'})
         st.plotly_chart(fig4, use_container_width=True)
 
-    # --- NEW: Row 4: Map Visualization ---
-    st.subheader("Global Content Production")
-
-    # Process data for the map
-    # We'll take the *first* country listed for simplicity
-    country_data = filtered_df[filtered_df['country'] != 'Unknown']['country'].str.split(', ').str[0]
-    country_counts = country_data.value_counts().reset_index()
-    country_counts.columns = ['Country', 'Count']
-
-    # Chart 5: Choropleth Map
-    fig5 = px.choropleth(
-        country_counts,
-        locations="Country",
-        locationmode="country names",
-        color="Count",
-        hover_name="Country",
-        hover_data={'Country': False, 'Count': True},
-        color_continuous_scale=px.colors.sequential.Reds,
-        title="Content Production by Country (based on first country listed)"
-    )
-    fig5.update_layout(margin=dict(l=0, r=0, t=40, b=0)) # Make map bigger
+    # --- NEW: Row 4: Rating Visualization ---
+    st.subheader("Content Analysis by Rating")
+    
+    # Chart 5: Bar chart for Top 10 Ratings
+    rating_counts = filtered_df['rating'].value_counts().head(10).reset_index()
+    rating_counts.columns = ['Rating', 'Count']
+    
+    fig5 = px.bar(rating_counts, 
+                  x='Count', 
+                  y='Rating', 
+                  orientation='h', 
+                  title="Top 10 Content Ratings")
+    fig5.update_layout(yaxis={'categoryorder':'total ascending'})
     st.plotly_chart(fig5, use_container_width=True)
 
 
