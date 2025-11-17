@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go # Needed for the heatmap
 import calendar # Needed for sorting months
 
 # --- Page Configuration ---
@@ -15,7 +16,7 @@ def load_data(filepath):
         data['country'] = data['country'].fillna('Unknown')
         data['director'] = data['director'].fillna('Unknown')
         data['cast'] = data['cast'].fillna('Unknown')
-        data = data.dropna(subset=['rating', 'date_added'])
+        data = data.dropna(subset=['rating', 'date_added', 'duration'])
         
         # Convert date_added to datetime objects for time-based plots
         data['date_added'] = pd.to_datetime(data['date_added'], format='mixed')
@@ -87,151 +88,141 @@ else:
 
     # --- NEW PLOTS START HERE ---
 
-    # Row 2: Duration Analysis (Plots 1 & 2)
-    st.subheader("Content Duration Analysis")
+    # Row 2: Sunburst Chart & Heatmap (Plots 1 & 2)
+    st.subheader("Content Library & Seasonal Trends")
     col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
-        # Plot 1: Histogram of Movie Durations
-        st.markdown("**Plot 1: Histogram of Movie Durations**")
-        df_movies = filtered_df[filtered_df['type'] == 'Movie'].copy()
+        # Plot 1: Sunburst Chart (Type -> Genre -> Rating)
+        st.markdown("**Plot 1: Hierarchical Content Breakdown**")
+        sunburst_data = filtered_df.dropna(subset=['listed_in', 'rating', 'type'])
+        sunburst_data['main_genre'] = sunburst_data['listed_in'].str.split(', ').str[0]
         
-        # --- FIX START ---
-        # 1. Drop rows where duration is NaN
-        df_movies = df_movies.dropna(subset=['duration'])
-        # 2. Also ensure we only get rows with " min" to avoid bad data (like '1 Season')
-        df_movies = df_movies[df_movies['duration'].str.contains(' min', na=False)]
-        # --- FIX END ---
+        sunburst_grouped = sunburst_data.groupby(['type', 'main_genre', 'rating']).size().reset_index(name='count')
         
-        if not df_movies.empty:
-            # 3. Now this conversion is safe
-            df_movies['duration_int'] = df_movies['duration'].str.replace(' min', '').astype(int)
-            
-            fig1 = px.histogram(
-                df_movies, 
-                x='duration_int', 
-                nbins=40, 
-                title="Distribution of Movie Durations (in minutes)"
+        if not sunburst_grouped.empty:
+            fig1 = px.sunburst(
+                sunburst_grouped,
+                path=['type', 'main_genre', 'rating'],
+                values='count',
+                title="Content Breakdown by Type, Genre, and Rating"
             )
-            fig1.update_layout(xaxis_title="Duration (Minutes)", yaxis_title="Number of Movies")
+            fig1.update_layout(margin=dict(l=0, r=0, t=30, b=0))
             st.plotly_chart(fig1, use_container_width=True)
         else:
-            st.info("No movies with valid duration data selected.")
-
+            st.info("No data for Sunburst chart.")
 
     with col_chart2:
-        # Plot 2: Bar Chart of TV Show Season Counts
-        st.markdown("**Plot 2: TV Show Season Counts**")
-        df_shows = filtered_df[filtered_df['type'] == 'TV Show'].copy()
+        # Plot 2: Content Addition Heatmap
+        st.markdown("**Plot 2: Content Addition Heatmap (by Year & Month)**")
+        heatmap_data = filtered_df.copy()
+        heatmap_data['month_added'] = heatmap_data['date_added'].dt.month_name()
+        heatmap_data['year_added'] = heatmap_data['date_added'].dt.year
         
-        # --- FIX START ---
-        # 1. Add a similar check for TV shows, ensuring duration is not NaN
-        df_shows = df_shows.dropna(subset=['duration'])
-        # 2. And ensure it contains "Season"
-        df_shows = df_shows[df_shows['duration'].str.contains('Season', na=False)]
-        # --- FIX END ---
+        # Group by year and month
+        heatmap_grouped = heatmap_data.groupby(['year_added', 'month_added']).size().reset_index(name='count')
         
-        if not df_shows.empty:
-            season_counts = df_shows['duration'].value_counts().reset_index()
-            season_counts.columns = ['Seasons', 'Count']
-            
-            # Sort by the number of seasons (e.g., "1 Season", "2 Seasons"...)
-            # This is a bit more complex but makes the chart logical
-            try:
-                season_counts['sort_key'] = season_counts['Seasons'].str.replace(' Seasons', '').str.replace(' Season', '').astype(int)
-                season_counts = season_counts.sort_values(by='sort_key')
-            except:
-                # Fallback if sorting fails
-                season_counts = season_counts.sort_values(by='Count', ascending=False)
+        # Sort months
+        month_order = list(calendar.month_name)[1:]
+        heatmap_grouped['month_added'] = pd.Categorical(heatmap_grouped['month_added'], categories=month_order, ordered=True)
+        heatmap_grouped = heatmap_grouped.sort_values(by='month_added')
+        
+        # Pivot for heatmap
+        heatmap_pivot = heatmap_grouped.pivot(index='year_added', columns='month_added', values='count').fillna(0)
 
-            fig2 = px.bar(
-                season_counts, 
-                x='Seasons', 
-                y='Count', 
-                title="Distribution of TV Show Seasons"
-            )
+        if not heatmap_pivot.empty:
+            fig2 = go.Figure(data=go.Heatmap(
+                z=heatmap_pivot.values,
+                x=heatmap_pivot.columns,
+                y=heatmap_pivot.index,
+                colorscale='Reds'
+            ))
+            fig2.update_layout(title="Monthly Content Additions Over Time",
+                               xaxis_title="Month",
+                               yaxis_title="Year")
             st.plotly_chart(fig2, use_container_width=True)
         else:
-            st.info("No TV shows with valid season data selected.")
+            st.info("No data for Heatmap.")
 
-    # Row 3: Actor Popularity & Content Seasonality (Plots 3 & 4)
-    st.subheader("Actor Popularity & Monthly Trends")
+
+    # Row 3: Country & Rating Analysis (Plots 3 & 4)
+    st.subheader("Geographic & Rating Analysis")
     col_chart3, col_chart4 = st.columns(2)
 
     with col_chart3:
-        # Plot 3: Bar Chart of Top 10 Actors
-        st.markdown("**Plot 3: Top 10 Actors**")
-        # Split 'cast', explode, and count, excluding 'Unknown'
-        all_actors = filtered_df[filtered_df['cast'] != 'Unknown']['cast'].str.split(', ').explode()
+        # Plot 3: Top 10 Production Countries (Excluding USA)
+        st.markdown("**Plot 3: Top 10 Production Countries (Excl. USA)**")
+        country_data = filtered_df[filtered_df['country'] != 'Unknown']['country'].str.split(', ').explode()
         
-        if not all_actors.empty:
-            actor_counts = all_actors.value_counts().head(10).reset_index()
-            actor_counts.columns = ['Actor', 'Count']
+        # Filter out USA
+        country_data_no_usa = country_data[country_data != 'United States']
+        
+        if not country_data_no_usa.empty:
+            country_counts = country_data_no_usa.value_counts().head(10).reset_index()
+            country_counts.columns = ['Country', 'Count']
             
             fig3 = px.bar(
-                actor_counts, 
-                x='Count', 
-                y='Actor', 
-                orientation='h', 
-                title="Top 10 Actors by Content Count"
+                country_counts,
+                x='Count',
+                y='Country',
+                orientation='h',
+                title="Top 10 Production Countries (Excluding United States)"
             )
             fig3.update_layout(yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig3, use_container_width=True)
         else:
-            st.info("No actor data to display.")
+            st.info("No non-USA country data to display.")
 
     with col_chart4:
-        # Plot 4: Bar Chart of Content Added by Month
-        st.markdown("**Plot 4: Content Added by Month**")
-        df_monthly = filtered_df.copy()
-        # Extract month name
-        df_monthly['month_added'] = df_monthly['date_added'].dt.month_name()
-        # Get counts
-        month_counts = df_monthly['month_added'].value_counts().reset_index()
-        month_counts.columns = ['Month', 'Count']
+        # Plot 4: Stacked Bar Chart of Ratings by Type
+        st.markdown("**Plot 4: Rating Distribution by Content Type**")
+        rating_by_type = filtered_df.groupby(['rating', 'type']).size().reset_index(name='count')
         
-        # Sort by calendar month (Jan, Feb, Mar...)
-        month_order = list(calendar.month_name)[1:]
-        month_counts = month_counts.set_index('Month').reindex(month_order).reset_index()
+        if not rating_by_type.empty:
+            fig4 = px.bar(
+                rating_by_type,
+                x='rating',
+                y='count',
+                color='type',
+                barmode='stack',
+                title="Rating Distribution (Movie vs. TV Show)"
+            )
+            fig4.update_layout(xaxis_title="Rating", yaxis_title="Count")
+            st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.info("No rating data to display.")
 
-        fig4 = px.bar(
-            month_counts, 
-            x='Month', 
-            y='Count', 
-            title="Content Additions by Month"
+
+    # Row 4: Box Plot (Plot 5)
+    st.subheader("Movie Runtime Analysis")
+    
+    # Plot 5: Box Plot of Movie Runtimes by Genre
+    st.markdown("**Plot 5: Movie Runtime Distribution by Genre**")
+    
+    box_data = filtered_df[
+        (filtered_df['type'] == 'Movie') & 
+        (filtered_df['duration'].str.contains(' min', na=False))
+    ].copy()
+    box_data = box_data.dropna(subset=['listed_in'])
+    
+    if not box_data.empty:
+        box_data['duration_int'] = box_data['duration'].str.replace(' min', '').astype(int)
+        box_data['main_genre'] = box_data['listed_in'].str.split(', ').str[0]
+        
+        # Get top 10 genres
+        top_10_genres = box_data['main_genre'].value_counts().head(10).index.tolist()
+        box_data_top_10 = box_data[box_data['main_genre'].isin(top_10_genres)]
+
+        fig5 = px.box(
+            box_data_top_10,
+            x='main_genre',
+            y='duration_int',
+            title="Movie Runtime Distributions by Top 10 Genres",
         )
-        st.plotly_chart(fig4, use_container_width=True)
-
-    # Row 4: Treemap Breakdown (Plot 5)
-    st.subheader("Content Library Breakdown")
-    
-    # Plot 5: Treemap of Genres and Ratings
-    st.markdown("**Plot 5: Treemap of Content by Genre and Rating**")
-    
-    # Use only the *first* listed genre for simplicity in the treemap
-    treemap_data = filtered_df.copy()
-    
-    # --- FIX START ---
-    # 3. Add a check to drop NaNs from 'listed_in' before splitting
-    treemap_data = treemap_data.dropna(subset=['listed_in'])
-    # --- FIX END ---
-    
-    treemap_data['main_genre'] = treemap_data['listed_in'].str.split(', ').str[0]
-    
-    # Group by main_genre and rating
-    treemap_grouped = treemap_data.groupby(['main_genr`e', 'rating']).size().reset_index(name='count')
-
-    if not treemap_grouped.empty:
-        fig5 = px.treemap(
-            treemap_grouped, 
-            path=[px.Constant("All Content"), 'main_genre', 'rating'], 
-            values='count',
-            title='Interactive Breakdown by Genre and Rating'
-        )
-        fig5.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+        fig5.update_layout(xaxis_title="Genre", yaxis_title="Duration (Minutes)")
         st.plotly_chart(fig5, use_container_width=True)
     else:
-        st.info("No data for treemap.")
+        st.info("No valid movie runtime data to display.")
 
 
     # Row 5: Raw Data Table (Kept from before)
