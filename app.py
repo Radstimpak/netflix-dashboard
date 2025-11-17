@@ -93,20 +93,15 @@ else:
     col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
-        # --- NEW PLOT 1: Stacked Bar of Top 10 Genres & Their Ratings ---
+        # Plot 1: Stacked Bar of Top 10 Genres & Their Ratings
         st.markdown("**Plot 1: Top 10 Genres by Rating**")
         
-        # Explode genres
         genre_df = filtered_df.dropna(subset=['listed_in', 'rating'])
         genre_df['main_genre'] = genre_df['listed_in'].str.split(', ').str[0]
         
-        # Get top 10 genres
         top_10_genres = genre_df['main_genre'].value_counts().head(10).index.tolist()
-        
-        # Filter dataframe to only include these top 10 genres
         top_genres_df = genre_df[genre_df['main_genre'].isin(top_10_genres)]
         
-        # Group by genre and rating to get counts
         genre_rating_counts = top_genres_df.groupby(['main_genre', 'rating']).size().reset_index(name='count')
 
         if not genre_rating_counts.empty:
@@ -183,20 +178,20 @@ else:
             st.info("No non-USA country data to display.")
 
     with col_chart4:
-        # Plot 4: Stacked Bar Chart of Ratings by Type
-        st.markdown("**Plot 4: Rating Distribution by Content Type**")
-        rating_by_type = filtered_df.groupby(['rating', 'type']).size().reset_index(name='count')
+        # --- NEW PLOT 4: Pie Chart of Overall Rating Distribution ---
+        st.markdown("**Plot 4: Overall Rating Distribution**")
         
-        if not rating_by_type.empty:
-            fig4 = px.bar(
-                rating_by_type,
-                x='rating',
-                y='count',
-                color='type',
-                barmode='stack',
-                title="Rating Distribution (Movie vs. TV Show)"
+        rating_counts = filtered_df['rating'].value_counts().reset_index()
+        rating_counts.columns = ['rating', 'count']
+
+        if not rating_counts.empty:
+            fig4 = px.pie(
+                rating_counts,
+                names='rating',
+                values='count',
+                title="Overall Rating Distribution",
+                hole=0.3 # This makes it a "donut" chart
             )
-            fig4.update_layout(xaxis_title="Rating", yaxis_title="Count")
             st.plotly_chart(fig4, use_container_width=True)
         else:
             st.info("No rating data to display.")
