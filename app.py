@@ -29,11 +29,11 @@ def load_data(filepath):
 df = load_data('netflix_titles.csv')
 
 # --- Main Dashboard Title ---
-st.title("🎬 A Data-Driven Analysis of Netflix")
+st.title("A Data-Driven Analysis of Netflix")
 st.markdown("This dashboard provides an interactive analysis of Netflix content, solving the 'decision fatigue' problem identified in the project background.")
 
 # --- Sidebar Filters ---
-st.sidebar.header("Dashboard Filters 🔎")
+st.sidebar.header("Dashboard Filters")
 
 # Filter 1: Type
 type_options = df['type'].unique()
