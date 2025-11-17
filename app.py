@@ -86,31 +86,44 @@ else:
     col2.metric("Total Movies", f"{total_movies:,}")
     col3.metric("Total TV Shows", f"{total_shows:,}")
 
-    # --- NEW PLOTS START HERE ---
+    # --- PLOTS START HERE ---
 
-    # Row 2: Sunburst Chart & Heatmap (Plots 1 & 2)
-    st.subheader("Content Library & Seasonal Trends")
+    # Row 2: Genre/Rating & Seasonal Trends (Plots 1 & 2)
+    st.subheader("Genre/Rating & Seasonal Trends")
     col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
-        # Plot 1: Sunburst Chart (Type -> Genre -> Rating)
-        st.markdown("**Plot 1: Hierarchical Content Breakdown**")
-        sunburst_data = filtered_df.dropna(subset=['listed_in', 'rating', 'type'])
-        sunburst_data['main_genre'] = sunburst_data['listed_in'].str.split(', ').str[0]
+        # --- NEW PLOT 1: Stacked Bar of Top 10 Genres & Their Ratings ---
+        st.markdown("**Plot 1: Top 10 Genres by Rating**")
         
-        sunburst_grouped = sunburst_data.groupby(['type', 'main_genre', 'rating']).size().reset_index(name='count')
+        # Explode genres
+        genre_df = filtered_df.dropna(subset=['listed_in', 'rating'])
+        genre_df['main_genre'] = genre_df['listed_in'].str.split(', ').str[0]
         
-        if not sunburst_grouped.empty:
-            fig1 = px.sunburst(
-                sunburst_grouped,
-                path=['type', 'main_genre', 'rating'],
-                values='count',
-                title="Content Breakdown by Type, Genre, and Rating"
+        # Get top 10 genres
+        top_10_genres = genre_df['main_genre'].value_counts().head(10).index.tolist()
+        
+        # Filter dataframe to only include these top 10 genres
+        top_genres_df = genre_df[genre_df['main_genre'].isin(top_10_genres)]
+        
+        # Group by genre and rating to get counts
+        genre_rating_counts = top_genres_df.groupby(['main_genre', 'rating']).size().reset_index(name='count')
+
+        if not genre_rating_counts.empty:
+            fig1 = px.bar(
+                genre_rating_counts,
+                x='main_genre',
+                y='count',
+                color='rating',
+                title="Rating Breakdown for Top 10 Genres",
+                barmode='stack'
             )
-            fig1.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+            fig1.update_layout(xaxis_title="Genre", yaxis_title="Total Count",
+                               xaxis={'categoryorder':'total descending'})
             st.plotly_chart(fig1, use_container_width=True)
         else:
-            st.info("No data for Sunburst chart.")
+            st.info("No data for Genre/Rating chart.")
+
 
     with col_chart2:
         # Plot 2: Content Addition Heatmap
@@ -119,15 +132,12 @@ else:
         heatmap_data['month_added'] = heatmap_data['date_added'].dt.month_name()
         heatmap_data['year_added'] = heatmap_data['date_added'].dt.year
         
-        # Group by year and month
         heatmap_grouped = heatmap_data.groupby(['year_added', 'month_added']).size().reset_index(name='count')
         
-        # Sort months
         month_order = list(calendar.month_name)[1:]
         heatmap_grouped['month_added'] = pd.Categorical(heatmap_grouped['month_added'], categories=month_order, ordered=True)
         heatmap_grouped = heatmap_grouped.sort_values(by='month_added')
         
-        # Pivot for heatmap
         heatmap_pivot = heatmap_grouped.pivot(index='year_added', columns='month_added', values='count').fillna(0)
 
         if not heatmap_pivot.empty:
@@ -154,7 +164,6 @@ else:
         st.markdown("**Plot 3: Top 10 Production Countries (Excl. USA)**")
         country_data = filtered_df[filtered_df['country'] != 'Unknown']['country'].str.split(', ').explode()
         
-        # Filter out USA
         country_data_no_usa = country_data[country_data != 'United States']
         
         if not country_data_no_usa.empty:
@@ -210,8 +219,8 @@ else:
         box_data['main_genre'] = box_data['listed_in'].str.split(', ').str[0]
         
         # Get top 10 genres
-        top_10_genres = box_data['main_genre'].value_counts().head(10).index.tolist()
-        box_data_top_10 = box_data[box_data['main_genre'].isin(top_10_genres)]
+        top_10_genres_box = box_data['main_genre'].value_counts().head(10).index.tolist()
+        box_data_top_10 = box_data[box_data['main_genre'].isin(top_10_genres_box)]
 
         fig5 = px.box(
             box_data_top_10,
