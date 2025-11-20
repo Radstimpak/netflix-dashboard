@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go # Needed for the heatmap
-import calendar # Needed for sorting months
+import plotly.graph_objects as go 
+import calendar
 
-# --- Page Configuration ---
+
 st.set_page_config(layout="wide", page_title="Netflix Analysis Dashboard")
 
-# --- Data Loading ---
+#Data Loading 
 @st.cache_data
 def load_data(filepath):
     try:
@@ -25,17 +25,14 @@ def load_data(filepath):
         st.error(f"Error: The file '{filepath}' was not found. Please make sure it's in the root of your GitHub repository.")
         return pd.DataFrame()
 
-# Load the dataset
 df = load_data('netflix_titles.csv')
 
-# --- Main Dashboard Title ---
 st.title("A Data-Driven Analysis of Netflix")
 st.markdown("This dashboard provides an interactive analysis of Netflix content, solving the 'decision fatigue' problem identified in the project background.")
 
-# --- Sidebar Filters ---
 st.sidebar.header("Dashboard Filters")
 
-# Filter 1: Type
+# Filter 1
 type_options = df['type'].unique()
 type_filter = st.sidebar.multiselect(
     "Select Content Type (Movie/TV Show):",
@@ -43,7 +40,7 @@ type_filter = st.sidebar.multiselect(
     default=type_options
 )
 
-# Filter 2: Rating
+# Filter 2
 rating_options = sorted(df['rating'].unique())
 rating_filter = st.sidebar.multiselect(
     "Select Content Rating:",
@@ -51,7 +48,7 @@ rating_filter = st.sidebar.multiselect(
     default=rating_options
 )
 
-# Filter 3: Release Year
+# Filter 3
 min_year = int(df['release_year'].min())
 max_year = int(df['release_year'].max())
 year_slider = st.sidebar.slider(
@@ -61,7 +58,7 @@ year_slider = st.sidebar.slider(
     value=(min_year, max_year)
 )
 
-# --- Apply Filters to Data ---
+
 filtered_df = df[
     (df['type'].isin(type_filter)) &
     (df['rating'].isin(rating_filter)) &
@@ -69,13 +66,13 @@ filtered_df = df[
     (df['release_year'] <= year_slider[1])
 ]
 
-# Show an error if the filters result in no data
 if filtered_df.empty:
     st.warning("No data found for the selected filters. Please adjust your filter settings.")
 else:
-    # --- Main Page Content ---
     
-    # Row 1: Key Metrics (Kept from before)
+    #Main Page
+    
+    #Key Metrics 
     st.subheader("High-Level Summary")
     total_titles = filtered_df.shape[0]
     total_movies = filtered_df[filtered_df['type'] == 'Movie'].shape[0]
@@ -86,14 +83,13 @@ else:
     col2.metric("Total Movies", f"{total_movies:,}")
     col3.metric("Total TV Shows", f"{total_shows:,}")
 
-    # --- PLOTS START HERE ---
+    #Plots
 
-    # Row 2: Genre/Rating & Seasonal Trends (Plots 1 & 2)
     st.subheader("Genre/Rating & Seasonal Trends")
     col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
-        # Plot 1: Stacked Bar of Top 10 Genres & Their Ratings
+        # Plot 1
         st.markdown("**Plot 1: Top 10 Genres by Rating**")
         
         genre_df = filtered_df.dropna(subset=['listed_in', 'rating'])
@@ -121,7 +117,7 @@ else:
 
 
     with col_chart2:
-        # Plot 2: Content Addition Heatmap
+        # Plot 2
         st.markdown("**Plot 2: Content Addition Heatmap (by Year & Month)**")
         heatmap_data = filtered_df.copy()
         heatmap_data['month_added'] = heatmap_data['date_added'].dt.month_name()
@@ -150,12 +146,11 @@ else:
             st.info("No data for Heatmap.")
 
 
-    # Row 3: Country & Rating Analysis (Plots 3 & 4)
     st.subheader("Geographic & Rating Analysis")
     col_chart3, col_chart4 = st.columns(2)
 
     with col_chart3:
-        # Plot 3: Top 10 Production Countries (Excluding USA)
+        # Plot 3
         st.markdown("**Plot 3: Top 10 Production Countries (Excl. USA)**")
         country_data = filtered_df[filtered_df['country'] != 'Unknown']['country'].str.split(', ').explode()
         
@@ -178,7 +173,7 @@ else:
             st.info("No non-USA country data to display.")
 
     with col_chart4:
-        # --- NEW PLOT 4: Pie Chart of Overall Rating Distribution ---
+        #Plot 4
         st.markdown("**Plot 4: Overall Rating Distribution**")
         
         rating_counts = filtered_df['rating'].value_counts().reset_index()
@@ -190,17 +185,17 @@ else:
                 names='rating',
                 values='count',
                 title="Overall Rating Distribution",
-                hole=0.3 # This makes it a "donut" chart
+                hole=0.3
             )
             st.plotly_chart(fig4, use_container_width=True)
         else:
             st.info("No rating data to display.")
 
 
-    # Row 4: Box Plot (Plot 5)
+
     st.subheader("Movie Runtime Analysis")
     
-    # Plot 5: Box Plot of Movie Runtimes by Genre
+    # Plot 5
     st.markdown("**Plot 5: Movie Runtime Distribution by Genre**")
     
     box_data = filtered_df[
@@ -229,6 +224,6 @@ else:
         st.info("No valid movie runtime data to display.")
 
 
-    # Row 5: Raw Data Table (Kept from before)
+    # Raw Data Table
     st.subheader("Explore All Filtered Titles")
     st.dataframe(filtered_df)
